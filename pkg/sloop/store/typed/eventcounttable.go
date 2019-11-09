@@ -9,11 +9,12 @@ package typed
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/dgraph-io/badger"
 	"github.com/salesforce/sloop/pkg/sloop/store/untyped"
 	"github.com/salesforce/sloop/pkg/sloop/store/untyped/badgerwrap"
-	"strings"
-	"time"
 )
 
 type EventCountKey struct {
@@ -39,8 +40,8 @@ func (*EventCountKey) TableName() string {
 
 func (k *EventCountKey) Parse(key string) error {
 	parts := strings.Split(key, "/")
-	if len(parts) != 7 {
-		return fmt.Errorf("Key should have 6 parts: %v", key)
+	if len(parts) < 6 {
+		return fmt.Errorf("Key should have 7 parts: %v", key)
 	}
 	if parts[0] != "" {
 		return fmt.Errorf("Key should start with /: %v", key)
@@ -52,7 +53,9 @@ func (k *EventCountKey) Parse(key string) error {
 	k.Kind = parts[3]
 	k.Namespace = parts[4]
 	k.Name = parts[5]
-	k.Uid = parts[6]
+	if len(parts) > 6 {
+		k.Uid = parts[6]
+	}
 	return nil
 }
 
