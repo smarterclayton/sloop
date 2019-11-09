@@ -22,6 +22,9 @@ let noSortFn = function () {
 const compareStartFn = function (a, b) {
     return a.start - b.start;
 };
+const compareEndFn = function (a, b) {
+    return b.start - a.start;
+};
 const compareMostEventsFn = function (a, b) {
     return b.overlays.length - a.overlays.length;
 };
@@ -116,6 +119,9 @@ function processAndSortResources(result) {
             switch (viewOptions.sort) {
                 case "starttime":
                     cmpFn = compareStartFn;
+                    break;
+                case "endtime":
+                    cmpFn = compareEndFn;
                     break;
                 case "name":
                     cmpFn = compareNameFn;
