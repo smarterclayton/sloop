@@ -10,9 +10,10 @@ package kubeextractor
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/golang/glog"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 // Example Event
@@ -57,10 +58,14 @@ import (
 func ExtractInvolvedObject(payload string) (KubeInvolvedObject, error) {
 	resource := struct {
 		InvolvedObject KubeInvolvedObject
+		Regarding      KubeInvolvedObject
 	}{}
 	err := json.Unmarshal([]byte(payload), &resource)
 	if err != nil {
 		return KubeInvolvedObject{}, err
+	}
+	if len(resource.Regarding.Name) > 0 {
+		return resource.Regarding, nil
 	}
 	return resource.InvolvedObject, nil
 }
@@ -76,7 +81,12 @@ type EventInfo struct {
 // Extracts event reason from kube watch event payload
 func ExtractEventInfo(payload string) (*EventInfo, error) {
 	internalResource := struct {
-		Reason         string `json:"reason"`
+		Reason    string `json:"reason"`
+		EventTime string `json:"eventTime"`
+		Series    *struct {
+			Count            int    `json:"count"`
+			LastObservedTime string `json:"lastObservedTime"`
+		}
 		FirstTimestamp string `json:"firstTimestamp"`
 		LastTimestamp  string `json:"lastTimestamp"`
 		Count          int    `json:"count"`
@@ -88,25 +98,49 @@ func ExtractEventInfo(payload string) (*EventInfo, error) {
 	}
 	// Convert timestamps
 
-	fs, err := time.Parse(time.RFC3339, internalResource.FirstTimestamp)
-	if err != nil {
-		glog.Errorf("Could not parse first timestamp %v\n", internalResource.FirstTimestamp)
-		fs = time.Time{}
+	event := &EventInfo{
+		Reason: internalResource.Reason,
+		Count:  internalResource.Count,
+		Type:   internalResource.Type,
 	}
 
-	ls, err := time.Parse(time.RFC3339, internalResource.LastTimestamp)
-	if err != nil {
-		glog.Errorf("Could not parse last timestamp %v\n", internalResource.LastTimestamp)
-		fs = time.Time{}
+	// Kubernetes new events model
+	if len(internalResource.EventTime) > 0 {
+		fs, err := time.Parse(time.RFC3339, internalResource.EventTime)
+		if err != nil {
+			glog.Errorf("Could not parse first timestamp %v", internalResource.EventTime)
+			fs = time.Time{}
+		}
+		event.FirstTimestamp = fs
+		event.LastTimestamp = fs
+
+		if internalResource.Series != nil {
+			event.Count = internalResource.Series.Count
+			ls, err := time.Parse(time.RFC3339, internalResource.Series.LastObservedTime)
+			if err != nil {
+				glog.Errorf("Could not parse last timestamp %v", internalResource.Series.LastObservedTime)
+			} else {
+				event.LastTimestamp = ls
+			}
+		}
+
+	} else {
+		fs, err := time.Parse(time.RFC3339, internalResource.FirstTimestamp)
+		if err != nil {
+			glog.Errorf("Could not parse first timestamp %v", internalResource.FirstTimestamp)
+			fs = time.Time{}
+		}
+
+		ls, err := time.Parse(time.RFC3339, internalResource.LastTimestamp)
+		if err != nil {
+			glog.Errorf("Could not parse last timestamp %v", internalResource.LastTimestamp)
+			ls = time.Time{}
+		}
+		event.FirstTimestamp = fs
+		event.LastTimestamp = ls
 	}
 
-	return &EventInfo{
-		Reason:         internalResource.Reason,
-		FirstTimestamp: fs,
-		LastTimestamp:  ls,
-		Count:          internalResource.Count,
-		Type:           internalResource.Type,
-	}, nil
+	return event, nil
 }
 
 // Events in kubernetes share the same namespace as the involved object, Kind=Event, and
